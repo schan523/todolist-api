@@ -1,7 +1,10 @@
 from dotenv import load_dotenv
 import os 
-from fastapi import FastAPI, HTTPException
+
+from fastapi import FastAPI, HTTPException, Depends
+from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel, EmailStr
+from typing import Annotated
 import firebase_admin
 from firebase_admin import credentials, firestore
 from google.cloud.firestore_v1 import aggregation
@@ -27,16 +30,33 @@ class Login(BaseModel):
     email: EmailStr
     password: str
 
+class ToDo(BaseModel):
+    title: str
+    description: str
+
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 # functions for password hashing and verifying 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+
 def get_password_hash(password):
     return pwd_context.hash(password)
 
 def verify_password(password, hashed_password):
     return pwd_context.verify(password, hashed_password)
+
+def get_user(email: EmailStr):
+    return db.collection("users").where(filter=FieldFilter("email", "==", email)).limit(1)
+
+def authenticate_user(email: EmailStr, password: str):
+    user = get_user(email).to_dict()
+    if user is None:
+        return False
+    if not verify_password(password, user["password"]):
+        return False
+    return user
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None):
     to_encode = data.copy()
@@ -48,16 +68,23 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     encoded_jwt = jwt.encode(to_encode, os.getenv("SECRET_KEY"), algorithm=ALGORITHM)
     return encoded_jwt
 
-
-@app.get("/")
-async def root():
-    return {"message": "Hello World"}
-
+async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]):
+    credientials_exception = HTTPException(status_code=401, detail="Unauthorized") 
+    try:
+        payload = jwt.decode(token, os.getenv("SECRET_CODE"), algorithm=ALGORITHM)
+        email = payload.get("email")
+        if email is None:
+            raise credientials_exception
+    except InvalidTokenError:
+        raise credientials_exception
+    
+    query = db.collection("users").where(filter=FieldFilter("email", "==", email))
+    return {"email": email}
 
 # User Registration Endpoint
 @app.post("/register")
 async def create_user(user: User):
-    query = db.collection("users").where(filter=FieldFilter("email", "==", user.email)).limit(1)
+    query = get_user(user.email)
     aggregate_query = aggregation.AggregationQuery(query)
     aggregate_query.count(alias="all")
     result = aggregate_query.get()[0][0].value
@@ -66,15 +93,12 @@ async def create_user(user: User):
         raise HTTPException(status_code=400, detail="A user has already been registered with this email address")
         
     else:
-        data = {
-            "name": user.name,
-            "email": user.email,
-            "password": get_password_hash(user.password)
-        }
-        db.collection("users").add(user.to_dict())
+        user_dict = user.model_dump().copy()
+        user_dict["password"] = get_password_hash(user.password)
+        db.collection("users").add(user_dict)
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     
-    return {"token": create_access_token(data, access_token_expires)}
+    return {"token": create_access_token(user.model_dump, access_token_expires)}
 
 
 # User Login
@@ -82,6 +106,8 @@ async def create_user(user: User):
 async def login(login_details : Login):
     email = login_details.email
     password = login_details.password
+
+    user = authenticate_user(email, password)
 
     docs = db.collection("users").where(filter=FieldFilter("email", "==", email)).stream()
     for doc in docs:
@@ -91,3 +117,10 @@ async def login(login_details : Login):
         return {"token": create_access_token({"email": email, "password": password}, timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))}
     else:
         raise HTTPException(status_code=400, detail="Password does not match")
+
+
+@app.post("/todos")
+async def create_to_do(to_do: ToDo):
+
+    return {}
+
