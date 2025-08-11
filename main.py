@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 import jwt
 from jwt.exceptions import InvalidTokenError
 import uuid
+import random
 
 load_dotenv()
 SECRET_KEY = os.getenv("SECRET_KEY")
@@ -119,12 +120,29 @@ async def login(form_data : Annotated[OAuth2PasswordRequestForm, Depends()]):
 async def debug(current_user: Annotated[dict, Depends(get_current_user)]):
     return current_user
 
+
 @app.post("/todos")
 async def create_to_do(to_do: ToDo, current_user : Annotated[dict, Depends(get_current_user)]):
     to_do_dict = to_do.model_dump()
     title = to_do_dict["title"]
     desc = to_do_dict["description"]
     to_do_dict["user_id"] = current_user["user_id"]
+    to_do_dict["id"] = random.randint(1, 1000)
     db.collection("tasks").add(to_do_dict)
-    return {"id": current_user["user_id"], "title": title, "description": desc}
+    return {"id": to_do_dict["id"], "title": title, "description": desc}
+
+
+@app.post("/todos/{id}")
+async def update_to_do(id: int, to_do : ToDo, current_user : Annotated[dict, Depends(get_current_user)]):
+    docs = db.collection("tasks").where(filter=FieldFilter("id", "==", id)).limit(1).stream()
+    doc = list(docs)[0]
+    data = doc.to_dict()
+    if data["user_id"] != current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="Forbidden: the current user is not the creator of the to-do item.")
+    
+    document = db.collection("tasks").document(doc.id)
+    document.update({"title": to_do.title})
+    document.update({"description": to_do.description})
+    results = document.get().to_dict()
+    return {"id": id, "title": to_do.title, "description": to_do.description}
 
