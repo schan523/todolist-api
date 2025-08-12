@@ -1,6 +1,7 @@
 # Todo List API
 
 Fast API was used for this implementation.
+Project link: https://roadmap.sh/projects/todo-list-api
 
 ## Setup
 1. To start, create a virtual environment using venv:
