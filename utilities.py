@@ -34,9 +34,7 @@ def get_user(email: EmailStr):
     docs = list(db.collection("users").where(filter=FieldFilter("email", "==", email)).limit(1).stream())
     if not docs:
         return None
-    
     return docs[0].to_dict()
-
 
 def authenticate_user(email: EmailStr, password: str):
     user = get_user(email)

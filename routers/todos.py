@@ -11,10 +11,12 @@ from google.cloud.firestore_v1.base_query import FieldFilter
 
 
 db = firestore.client()
-router = APIRouter()
+router = APIRouter(
+    tags=["todos"]
+)
 
 
-@router.post("/todos", tags=["todos"])
+@router.post("/todos")
 async def create_to_do(to_do: ToDo, current_user : Annotated[dict, Depends(get_current_user)]):
     to_do_dict = to_do.model_dump()
     title = to_do_dict["title"]
@@ -32,7 +34,7 @@ async def create_to_do(to_do: ToDo, current_user : Annotated[dict, Depends(get_c
     return {"id": to_do_dict["id"], "title": title, "description": desc}
 
 
-@router.post("/todos/{id}", tags=["todos"])
+@router.post("/todos/{id}")
 async def update_to_do(id: int, to_do : ToDo, current_user : Annotated[dict, Depends(get_current_user)]):
     docs = db.collection("tasks").where(filter=FieldFilter("id", "==", id)).limit(1).stream()
     doc = list(docs)[0]
@@ -47,7 +49,7 @@ async def update_to_do(id: int, to_do : ToDo, current_user : Annotated[dict, Dep
     return {"id": id, "title": to_do.title, "description": to_do.description}
 
 
-@router.delete("/todos/{id}", status_code=204, tags=["todos"])
+@router.delete("/todos/{id}", status_code=204)
 async def delete_todo(id : int, current_user : Annotated[dict, Depends(get_current_user)]):
     query = db.collection("tasks").where(filter=FieldFilter("id", "==", id)).stream()
     doc = list(query)[0]
@@ -59,7 +61,7 @@ async def delete_todo(id : int, current_user : Annotated[dict, Depends(get_curre
     return 
 
 
-@router.get("/todos", tags=["todos"])
+@router.get("/todos")
 async def get_todo(current_user : Annotated[dict, Depends(get_current_user)], page : int = 1, limit: int = 10):
     user_id = current_user["user_id"]
     data = []
