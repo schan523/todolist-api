@@ -34,7 +34,7 @@ async def create_to_do(to_do: ToDo, current_user : Annotated[dict, Depends(get_c
     return {"id": to_do_dict["id"], "title": title, "description": desc}
 
 
-@router.post("/todos/{id}")
+@router.put("/todos/{id}")
 async def update_to_do(id: int, to_do : ToDo, current_user : Annotated[dict, Depends(get_current_user)]):
     docs = db.collection("tasks").where(filter=FieldFilter("id", "==", id)).limit(1).stream()
     doc = list(docs)[0]
